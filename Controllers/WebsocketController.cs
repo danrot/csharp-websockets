@@ -12,33 +12,58 @@ namespace csharp_websockets.Controllers
     {
         private static Random random = new Random();
 
+        private static UTF8Encoding utf8 = new UTF8Encoding();
+
         [Route("WebSocket")]
         public async Task Index()
         {
             if (HttpContext.WebSockets.IsWebSocketRequest) {
                 using (WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync())
                 {
-                    var utf8 = new UTF8Encoding();
-                    while (true)
-                    {
-                        var data = new {
-                            random = random.Next(0, 100),
-                            created = DateTime.Now,
-                        };
+                    var sendRecursive = SendRecursive(webSocket);
+                    var receiveRecursive = ReceiveRecursive(webSocket);
 
-                        await webSocket.SendAsync(
-                            new ArraySegment<byte>(utf8.GetBytes(JsonSerializer.Serialize(data))),
-                            WebSocketMessageType.Text,
-                            true,
-                            CancellationToken.None
-                        );
-
-                        await Task.Delay(random.Next(0, 10000));
-                    }
+                    await Task.WhenAll(sendRecursive, receiveRecursive);
                 }
             } else {
                 Response.StatusCode = 400;
             }
+        }
+
+        private async Task ReceiveRecursive(WebSocket webSocket)
+        {
+            var buffer = new byte[1024 * 4];
+            await webSocket.ReceiveAsync(
+                new ArraySegment<byte>(buffer),
+                CancellationToken.None
+            );
+
+            await Send(webSocket);
+
+            await ReceiveRecursive(webSocket);
+        }
+
+        private async Task Send(WebSocket webSocket)
+        {
+            var data = new {
+                random = random.Next(0, 100),
+                created = DateTime.Now,
+            };
+
+            await webSocket.SendAsync(
+                new ArraySegment<byte>(utf8.GetBytes(JsonSerializer.Serialize(data))),
+                WebSocketMessageType.Text,
+                true,
+                CancellationToken.None
+            );
+        }
+
+        private async Task SendRecursive(WebSocket webSocket)
+        {
+            await Send(webSocket);
+
+            await Task.Delay(random.Next(0, 10000));
+            await SendRecursive(webSocket);
         }
     }
 }
